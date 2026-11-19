@@ -1,11 +1,14 @@
 # esp-signalk-sender
 
-Shared helpers for ESP32 sensor firmware that pushes readings to a **Signal K**
-server over UDP as NMEA 0183.
+Shared helpers for ESP32 boat sensors that push readings to a **Signal K**
+server over UDP as NMEA 0183, and for the display that takes over when that
+server is not running.
 
 Used by [Wind-Sensor](https://github.com/rudgej/Wind-Sensor) and
 [water-level-sensor](https://github.com/rudgej/water-level-sensor), which had
-drifted into near-identical copies of the same four routines.
+drifted into near-identical copies of the same four routines, and by
+[CYD-Display](https://github.com/rudgej/CYD-Display), which hosts the fallback
+network.
 
 ## The problem it solves
 
@@ -32,13 +35,48 @@ to about 1.2 s.
 | `sks::nmea(body)` | Assemble an NMEA 0183 sentence, adding `$` and the checksum |
 | `sks::extractNumber(body, key, out)` | Pull the first number following `"key"` from a JSON body |
 | `sks::Probe` | Periodic, non-blocking GET of a Signal K REST path |
+| `sks::UdpSender` | One UDP socket with a destination that can change at runtime |
+| `sks::NetSupervisor` | Non-blocking primary/fallback network handover. No radio code |
+| `sks::EspWifiPlatform` | The Arduino/ESP32 side of `NetSupervisor` |
+
+## Network failover
+
+When the plotter is switched off, the Wi-Fi network and Signal K go with it, even
+though the sensors are still running. The CYD therefore raises a fallback access
+point, and the sensors have to move to it and back again without being touched.
+
+Two things make that harder than it looks, and both are handled here rather than
+in each firmware:
+
+- **One radio, one channel.** An access point and a station share the radio, so a
+  hub's AP must sit on the primary network's channel or every recovery drags the
+  AP to a new channel and drops its clients.
+- **Losing the network and losing the server are different faults.** If the link
+  is gone, an AP of our own replaces it. If the link is fine and Signal K is dead,
+  raising an AP helps nobody - every client already has a working network; it is
+  the destination that is missing.
+
+The rules are deliberately asymmetric: **slow to leave the primary, quick to
+return.** A brief interruption never starts a network. Sustained failure does.
+On the way back, the primary is verified by data - not by seeing the SSID - and
+the AP is only torn down once the primary has held stable, because in the real
+world the plotter is off overnight and back in the morning. Anything faster than
+that is a network fault, so repeated fallbacks switch the supervisor into a
+degraded mode that doubles the grace period and keeps the safety net up rather
+than flapping with the fault.
+
+The whole state machine is driven with `poll(millis())`, never blocks, and has no
+Arduino dependency, so it can be tested against a mock platform. See
+`NetPlatform` for the seam and `CYD-Display`'s `net_selftest` environment for the
+scenarios it is checked against.
 
 ## What is deliberately *not* in it
 
-There is no Wi-Fi management, no UDP sender, no configuration handling. Those
-differ enough between projects (AP fallback rules, NVS keys, PGN versus sentence
-formats) that sharing them would cost more than it saves. This library covers
-only what was genuinely duplicated **and** was causing a bug.
+No NVS or configuration handling, no setup portal, and no knowledge of what the
+sentences mean. The sensor projects keep those because they differ: NVS keys,
+calibration, PGN versus sentence payloads. This library covers the things that
+were duplicated **and** causing a bug, or that two devices must agree on to
+interoperate.
 
 ## Use
 
@@ -90,6 +128,7 @@ they are rebuilt and reflashed.
 ## Versioning
 
 - `v0.1.0` — `nmea()`, `extractNumber()`, non-blocking `Probe`
+- `v0.2.0` — `UdpSender`, `NetSupervisor` + `NetPlatform` seam, `EspWifiPlatform`
 
 Bump the tag deliberately in each consumer when you want a change to flow, and
 note what changed here.

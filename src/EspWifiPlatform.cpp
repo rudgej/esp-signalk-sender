@@ -1,0 +1,85 @@
+#include "EspWifiPlatform.h"
+
+namespace sks {
+
+void EspWifiPlatform::begin() {
+  // The radio is reconfigured often (mode changes, SSID changes). Persisting
+  // that to NVS on every change wears the flash out and, worse, makes a failed
+  // fallback into a boot-time surprise.
+  WiFi.persistent(false);
+  // Modem sleep adds tens of milliseconds of latency and causes the access
+  // point to miss beacons while the station is idle. Not acceptable on a
+  // device that has to stay reachable.
+  WiFi.setSleep(false);
+  WiFi.mode(WIFI_STA);
+  WiFi.setAutoReconnect(false);  // the supervisor owns reconnection policy
+}
+
+void EspWifiPlatform::staBegin(const char *ssid, const char *pass) {
+  if (!ssid || !ssid[0]) return;
+  WiFi.begin(ssid, pass);
+}
+
+void EspWifiPlatform::staStop() { WiFi.disconnect(false, true); }
+
+bool EspWifiPlatform::staUp() { return WiFi.status() == WL_CONNECTED; }
+
+uint32_t EspWifiPlatform::staIp() {
+  const IPAddress ip = WiFi.localIP();
+  return ((uint32_t)ip[0] << 24) | ((uint32_t)ip[1] << 16) |
+         ((uint32_t)ip[2] << 8) | (uint32_t)ip[3];
+}
+
+const char *EspWifiPlatform::staSsid() {
+  static char buf[33];
+  const String s = WiFi.SSID();
+  strncpy(buf, s.c_str(), sizeof(buf) - 1);
+  buf[sizeof(buf) - 1] = '\0';
+  return buf;
+}
+
+void EspWifiPlatform::apStart(const char *ssid, const char *pass,
+                              uint8_t channel, uint8_t maxClients) {
+  if (!ssid || !ssid[0]) return;
+  // AP+STA on purpose: the station keeps trying to reach the primary while the
+  // access point serves the devices that fell back. Both share one radio, so
+  // the AP channel must match the primary - see NetConfig::apChannel.
+  WiFi.mode(WIFI_AP_STA);
+  WiFi.softAP(ssid, pass, channel, /*hidden=*/false, maxClients);
+  WiFi.setSleep(false);
+}
+
+void EspWifiPlatform::apStop() {
+  WiFi.softAPdisconnect(true);
+  if (WiFi.status() == WL_CONNECTED) {
+    WiFi.mode(WIFI_STA);  // keep the station link, drop the AP personality
+  } else {
+    WiFi.mode(WIFI_STA);
+  }
+}
+
+uint8_t EspWifiPlatform::apClients() { return WiFi.softAPgetStationNum(); }
+
+void EspWifiPlatform::scanStart(const char *targetSsid) {
+  scanTarget_ = targetSsid;
+  // Asynchronous: a blocking scan stalls the AP and drops its clients.
+  WiFi.scanNetworks(/*async=*/true, /*show_hidden=*/false);
+}
+
+ScanResult EspWifiPlatform::scanPoll() {
+  const int16_t n = WiFi.scanComplete();
+  if (n == WIFI_SCAN_RUNNING) return ScanResult::Running;
+  if (n == WIFI_SCAN_FAILED) return ScanResult::Idle;  // never started
+
+  bool found = false;
+  for (int16_t i = 0; i < n; ++i) {
+    if (scanTarget_ && WiFi.SSID(i) == scanTarget_) {
+      found = true;
+      break;
+    }
+  }
+  WiFi.scanDelete();
+  return found ? ScanResult::FoundPrimary : ScanResult::NotFound;
+}
+
+}  // namespace sks
