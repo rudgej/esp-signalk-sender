@@ -77,6 +77,13 @@ class NetSupervisor {
 
   // Diagnostics.
   uint8_t channel() const { return channel_; }
+  bool scanning() const { return scanning_; }
+  uint16_t scanStarts() const { return scanStarts_; }
+  uint16_t scanResults() const { return scanResults_; }
+  // Non-zero means the driver accepted a scan request and never answered it.
+  // Without a bound on that, one bad request stops the device looking for the
+  // primary for ever.
+  uint16_t scanAborts() const { return scanAborts_; }
 
  private:
   void enter(NetState next, uint32_t now);
@@ -113,6 +120,12 @@ class NetSupervisor {
   bool scanning_ = false;
   uint32_t nextScanAt_ = 0;
   uint32_t nextFullScanAt_ = 0;
+  uint32_t scanStartedAt_ = 0;
+  uint32_t nextSwitchAt_ = 0;
+  uint32_t nextBlindAt_ = 0;
+  uint16_t scanStarts_ = 0;
+  uint16_t scanResults_ = 0;
+  uint16_t scanAborts_ = 0;
   bool primarySeen_ = false;
   // Where the primary was last seen. Learned from the station link and from
   // scans, so the frequent look can be a single-channel one.

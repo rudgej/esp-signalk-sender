@@ -96,6 +96,8 @@ void NetSupervisor::enter(NetState next, uint32_t now) {
   switch (next) {
     case NetState::Fallback:
       nextScanAt_ = now;  // look for the primary straight away
+      nextSwitchAt_ = now;
+      nextBlindAt_ = now + cfg_.primaryProbeMs;
       if (cfg_.role == NetRole::Hub) raiseAp();
       break;
     case NetState::Recovering:
@@ -162,10 +164,19 @@ void NetSupervisor::poll(uint32_t nowMs) {
     }
     primarySeen_ = true;
     scanning_ = false;
+    ++scanResults_;
     if (foundChannel) channel_ = foundChannel;
   } else if (sr == ScanResult::NotFound) {
     primarySeen_ = false;
     scanning_ = false;
+    ++scanResults_;
+  } else if (scanning_ && el(now, scanStartedAt_) > 6000) {
+    // The request was accepted and never answered - driver hiccup, radio busy,
+    // or a scan that was silently dropped. Without this the flag stays set and
+    // the device stops looking for the primary for ever, which looks exactly
+    // like a sender that has given up.
+    scanning_ = false;
+    ++scanAborts_;
   }
 
   const bool up = plat_->staUp();
@@ -270,30 +281,39 @@ void NetSupervisor::poll(uint32_t nowMs) {
         const bool full = (channel_ == 0) || reached(now, nextFullScanAt_);
         plat_->scanStart(cfg_.primarySsid, full ? 0 : channel_);
         scanning_ = true;
+        scanStartedAt_ = now;
+        ++scanStarts_;
         if (full) nextFullScanAt_ = now + cfg_.scanMs;
         nextScanAt_ = now + (channel_ ? cfg_.scanFastMs : cfg_.scanMs);
       }
 
-      // Prefer the primary; a client-only device may sit on the fallback
-      // network meanwhile so the hub can still reach it. This also runs while
-      // associated to the fallback network - without that a client would sit
-      // there until someone power-cycled it, because "linked" was true and the
-      // old condition only reconnected when it was not.
-      //
-      // A HUB must never do this second part. Its own access point is
-      // advertising fallbackSsid, so "join the fallback network" means joining
-      // itself: the ESP32 will happily do it, and then the station and the
-      // access point fight over the same radio, the AP keeps restarting, and
-      // every client attached to it drops and returns on a loop. That is a
-      // network that appears to work and delivers nothing.
-      const bool wantPrimary = primarySeen_ || !cfg_.fallbackSsid;
-      if (!onPrimaryNet && reached(now, nextActionAt_)) {
-        if (wantPrimary) {
+      // What is the radio actually attached to? Between association and the
+      // SSID becoming readable there is a moment where it is neither, and
+      // treating that moment as "not on the primary" causes a reconnect to the
+      // network already in use - which knocks the device off it and repeats.
+      const char *here = up ? plat_->staSsid() : nullptr;
+      const bool onFallbackNet = here != nullptr && cfg_.fallbackSsid != nullptr &&
+                                 strcmp(here, cfg_.fallbackSsid) == 0;
+
+      if (!up && reached(now, nextActionAt_)) {
+        if (primarySeen_ || !cfg_.fallbackSsid) {
           plat_->staBegin(cfg_.primarySsid, cfg_.primaryPass);
-        } else if (cfg_.role == NetRole::ClientOnly && !up) {
+        } else if (cfg_.role == NetRole::ClientOnly) {
           plat_->staBegin(cfg_.fallbackSsid, cfg_.fallbackPass);
         }
         scheduleRetry(now);
+      }
+
+      // Sitting on the hub's network: leave for the primary, but only when
+      // there is a reason to and not more often than the switch interval. The
+      // blind probe is the backstop for the case where scanning never works.
+      const bool blindDue =
+          cfg_.role == NetRole::ClientOnly && reached(now, nextBlindAt_);
+      if (onFallbackNet && reached(now, nextSwitchAt_) &&
+          (primarySeen_ || blindDue)) {
+        if (!primarySeen_) nextBlindAt_ = now + cfg_.primaryProbeMs;
+        nextSwitchAt_ = now + cfg_.switchMs;
+        plat_->staBegin(cfg_.primarySsid, cfg_.primaryPass);
       }
       break;
     }

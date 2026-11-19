@@ -66,6 +66,11 @@ struct NetConfig {
   // than in a minute.
   uint32_t scanFastMs = 5000;          // single-channel look
   uint8_t primaryChannel = 0;          // hint; 0 = learn it from the link
+  // Leaving the hub's network for the primary is a disruptive act, so it is
+  // rate limited. Blind probe: even if scanning is broken, a client must not
+  // live on the fallback network for ever.
+  uint32_t switchMs = 30000;
+  uint32_t primaryProbeMs = 60000;
   uint32_t holdAfterRecoveryMs = 180000;  // AP overlap window, see below
   uint32_t flapWindowMs = 1800000;     // 3 transitions in 30 min == a fault
   uint8_t flapLimit = 3;

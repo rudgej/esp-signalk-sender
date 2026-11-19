@@ -134,6 +134,7 @@ they are rebuilt and reflashed.
 - `v0.2.3` — the AP address is assembled from octets (byte order was reversed)
 - `v0.2.4` — a hub never joins its own AP; scans default to once a minute
 - `v0.3.0` — channel-aware scanning: seconds to recover, not a minute
+- `v0.3.1` — bounded scan wait; never reconnect to the network already in use
 
 Bump the tag deliberately in each consumer when you want a change to flow, and
 note what changed here.
