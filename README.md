@@ -70,6 +70,25 @@ Arduino dependency, so it can be tested against a mock platform. See
 `NetPlatform` for the seam and `CYD-Display`'s `net_selftest` environment for the
 scenarios it is checked against.
 
+### Three traps worth knowing about
+
+Each of these was found on hardware, each looked like a flaky radio, and each is
+now a regression test:
+
+1. **A hub must never join its own access point.** It advertises the fallback
+   SSID, so "join the fallback network" means joining itself. The ESP32 does it
+   happily; the station and the AP then fight over the one radio and every
+   attached client drops in a loop.
+2. **Being associated is not being on the *right* network.** Between
+   association and the SSID becoming readable there is a moment where the radio
+   matches neither, and treating that as "not on the primary" causes a reconnect
+   to the network already in use.
+3. **Bound every wait.** A scan request that is accepted and never answered used
+   to leave the scanning flag set for ever, after which the device stops looking
+   for the primary and sits on the fallback network indefinitely. `scanStarts`,
+   `scanResults` and `scanAborts` exist so that state is visible rather than
+   inferred.
+
 ## What is deliberately *not* in it
 
 No NVS or configuration handling, no setup portal, and no knowledge of what the
