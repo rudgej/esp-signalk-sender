@@ -50,10 +50,15 @@ void EspWifiPlatform::apStart(const char *ssid, const char *pass,
   if (ip != 0) {
     const IPAddress local((uint32_t)ip);
     const IPAddress subnet((uint32_t)(mask ? mask : 0x00FFFFFFu));
+    // The lease start matters as much as the address. Moving the AP to a new
+    // subnet without moving the DHCP pool leaves clients able to associate but
+    // never able to get an address - they sit there looking connected while
+    // sending nothing, which is a far worse failure than not joining at all.
+    const IPAddress lease((uint32_t)(ip + 1));
     // Without this the AP comes up on 192.168.4.1 regardless of what the
     // application configured, and anything told to send to the configured
     // address sends to a machine that is not there.
-    WiFi.softAPConfig(local, local, subnet);
+    WiFi.softAPConfig(local, local, subnet, lease);
   }
 
   WiFi.softAP(ssid, pass, channel, /*hidden=*/false, maxClients);
