@@ -1,0 +1,12 @@
+{
+  "name": "esp-signalk-sender",
+  "version": "0.1.0",
+  "description": "Shared helpers for ESP32 sensors that push NMEA 0183 to a Signal K server over UDP: sentence assembly, JSON value scraping, and a non-blocking round-trip health probe.",
+  "keywords": ["signalk", "nmea0183", "esp32", "udp", "sensor"],
+  "frameworks": "arduino",
+  "platforms": "espressif32",
+  "license": "MIT",
+  "build": {
+    "srcDir": "src"
+  }
+}
