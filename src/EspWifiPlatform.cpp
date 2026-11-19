@@ -48,13 +48,22 @@ void EspWifiPlatform::apStart(const char *ssid, const char *pass,
   WiFi.mode(WIFI_AP_STA);
 
   if (ip != 0) {
-    const IPAddress local((uint32_t)ip);
-    const IPAddress subnet((uint32_t)(mask ? mask : 0x00FFFFFFu));
+    // Built from octets on purpose. IPAddress(uint32_t) takes the value in
+    // network byte order, so casting the host-order integer straight in gives
+    // 1.50.168.192 instead of 192.168.50.1 - an access point on a subnet
+    // nobody expects, with a DHCP pool to match.
+    const IPAddress local((uint8_t)(ip >> 24), (uint8_t)(ip >> 16),
+                          (uint8_t)(ip >> 8), (uint8_t)ip);
+    const uint32_t m = mask ? mask : 0x00FFFFFFu;
+    const IPAddress subnet((uint8_t)(m >> 24), (uint8_t)(m >> 16),
+                           (uint8_t)(m >> 8), (uint8_t)m);
     // The lease start matters as much as the address. Moving the AP to a new
     // subnet without moving the DHCP pool leaves clients able to associate but
     // never able to get an address - they sit there looking connected while
     // sending nothing, which is a far worse failure than not joining at all.
-    const IPAddress lease((uint32_t)(ip + 1));
+    const uint32_t leaseHost = ip + 1;
+    const IPAddress lease((uint8_t)(leaseHost >> 24), (uint8_t)(leaseHost >> 16),
+                          (uint8_t)(leaseHost >> 8), (uint8_t)leaseHost);
     // Without this the AP comes up on 192.168.4.1 regardless of what the
     // application configured, and anything told to send to the configured
     // address sends to a machine that is not there.

@@ -131,6 +131,7 @@ they are rebuilt and reflashed.
 - `v0.2.0` — `UdpSender`, `NetSupervisor` + `NetPlatform` seam, `EspWifiPlatform`
 - `v0.2.1` — the AP address is part of `apStart`; being associated is not recovery
 - `v0.2.2` — the DHCP lease pool follows the access point address
+- `v0.2.3` — the AP address is assembled from octets (byte order was reversed)
 
 Bump the tag deliberately in each consumer when you want a change to flow, and
 note what changed here.
