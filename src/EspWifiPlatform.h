@@ -27,7 +27,7 @@ class EspWifiPlatform : public NetPlatform {
   const char *staSsid() override;
 
   void apStart(const char *ssid, const char *pass, uint8_t channel,
-               uint8_t maxClients) override;
+               uint8_t maxClients, uint32_t ip, uint32_t mask) override;
   void apStop() override;
   uint8_t apClients() override;
 

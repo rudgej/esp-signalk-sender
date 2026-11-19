@@ -1,5 +1,7 @@
 #include "NetSupervisor.h"
 
+#include <string.h>
+
 namespace sks {
 namespace {
 
@@ -54,7 +56,7 @@ void NetSupervisor::scheduleRetry(uint32_t now) {
 void NetSupervisor::raiseAp() {
   if (!plat_ || apUp_) return;
   plat_->apStart(cfg_.fallbackSsid, cfg_.fallbackPass, cfg_.apChannel,
-                 cfg_.apMaxClients);
+                 cfg_.apMaxClients, cfg_.apIp, cfg_.apMask);
   apUp_ = true;
 }
 
@@ -164,7 +166,15 @@ void NetSupervisor::poll(uint32_t nowMs) {
   primaryIp_ = up ? plat_->staIp() : 0;
   apClients_ = apUp_ ? plat_->apClients() : 0;
 
-  const bool ok = up && verified();
+  // Which network are we actually on? Being associated is not the same as
+  // being on the primary. A client that has fallen back is associated to the
+  // hub, and counting that as recovery sends its data to a server that is not
+  // running - the exact failure this module exists to prevent.
+  const char *ssid = up ? plat_->staSsid() : nullptr;
+  const bool onPrimaryNet = up && ssid != nullptr && cfg_.primarySsid != nullptr &&
+                            strcmp(ssid, cfg_.primarySsid) == 0;
+
+  const bool ok = onPrimaryNet && verified();
   if (ok) {
     reason_ = NetReason::None;
     retryInterval_ = cfg_.retryMs;  // healthy: forget the backoff
@@ -210,7 +220,7 @@ void NetSupervisor::poll(uint32_t nowMs) {
         enter(NetState::PrimaryUp, now);
         break;
       }
-      if (up) {
+      if (onPrimaryNet) {
         // Link is healthy, the server is not. Reconnecting the radio would
         // change nothing, and an AP of our own would help nobody: every
         // client already has a working network. The application owns the
@@ -244,12 +254,15 @@ void NetSupervisor::poll(uint32_t nowMs) {
       }
 
       // Prefer the primary; a client-only device may sit on the fallback
-      // network meanwhile so the hub can still reach it.
+      // network meanwhile so the hub can still reach it. This also runs while
+      // associated to the fallback network - without that a client would sit
+      // there until someone power-cycled it, because "linked" was true and the
+      // old condition only reconnected when it was not.
       const bool wantPrimary = primarySeen_ || !cfg_.fallbackSsid;
-      if (!up && reached(now, nextActionAt_)) {
+      if (!onPrimaryNet && reached(now, nextActionAt_)) {
         if (wantPrimary) {
           plat_->staBegin(cfg_.primarySsid, cfg_.primaryPass);
-        } else {
+        } else if (!up) {
           plat_->staBegin(cfg_.fallbackSsid, cfg_.fallbackPass);
         }
         scheduleRetry(now);

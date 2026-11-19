@@ -39,12 +39,23 @@ const char *EspWifiPlatform::staSsid() {
 }
 
 void EspWifiPlatform::apStart(const char *ssid, const char *pass,
-                              uint8_t channel, uint8_t maxClients) {
+                              uint8_t channel, uint8_t maxClients,
+                              uint32_t ip, uint32_t mask) {
   if (!ssid || !ssid[0]) return;
   // AP+STA on purpose: the station keeps trying to reach the primary while the
   // access point serves the devices that fell back. Both share one radio, so
   // the AP channel must match the primary - see NetConfig::apChannel.
   WiFi.mode(WIFI_AP_STA);
+
+  if (ip != 0) {
+    const IPAddress local((uint32_t)ip);
+    const IPAddress subnet((uint32_t)(mask ? mask : 0x00FFFFFFu));
+    // Without this the AP comes up on 192.168.4.1 regardless of what the
+    // application configured, and anything told to send to the configured
+    // address sends to a machine that is not there.
+    WiFi.softAPConfig(local, local, subnet);
+  }
+
   WiFi.softAP(ssid, pass, channel, /*hidden=*/false, maxClients);
   WiFi.setSleep(false);
 }
