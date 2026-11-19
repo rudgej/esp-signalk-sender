@@ -57,7 +57,10 @@ struct NetConfig {
   uint32_t graceMs = 30000;            // sustained failure before fallback
   uint32_t retryMs = 5000;             // first retry interval
   uint32_t retryMaxMs = 30000;         // retry backoff ceiling
-  uint32_t scanMs = 20000;             // how often to look for the primary
+  // Scanning costs the access point airtime, and a hub scanning every 20 s
+  // while its own clients are associated drops them repeatedly. Long is
+  // better than frequent here: the plotter is off overnight, not for 20 s.
+  uint32_t scanMs = 60000;             // how often to look for the primary
   uint32_t holdAfterRecoveryMs = 180000;  // AP overlap window, see below
   uint32_t flapWindowMs = 1800000;     // 3 transitions in 30 min == a fault
   uint8_t flapLimit = 3;

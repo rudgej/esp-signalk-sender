@@ -258,11 +258,18 @@ void NetSupervisor::poll(uint32_t nowMs) {
       // associated to the fallback network - without that a client would sit
       // there until someone power-cycled it, because "linked" was true and the
       // old condition only reconnected when it was not.
+      //
+      // A HUB must never do this second part. Its own access point is
+      // advertising fallbackSsid, so "join the fallback network" means joining
+      // itself: the ESP32 will happily do it, and then the station and the
+      // access point fight over the same radio, the AP keeps restarting, and
+      // every client attached to it drops and returns on a loop. That is a
+      // network that appears to work and delivers nothing.
       const bool wantPrimary = primarySeen_ || !cfg_.fallbackSsid;
       if (!onPrimaryNet && reached(now, nextActionAt_)) {
         if (wantPrimary) {
           plat_->staBegin(cfg_.primarySsid, cfg_.primaryPass);
-        } else if (!up) {
+        } else if (cfg_.role == NetRole::ClientOnly && !up) {
           plat_->staBegin(cfg_.fallbackSsid, cfg_.fallbackPass);
         }
         scheduleRetry(now);
