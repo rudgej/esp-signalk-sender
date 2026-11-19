@@ -29,6 +29,7 @@ void NetSupervisor::begin(NetConfig config, NetPlatform *platform) {
   if (!cfg_.retryMaxMs) cfg_.retryMaxMs = cfg_.retryMs;
 
   retryInterval_ = cfg_.retryMs;
+  channel_ = cfg_.primaryChannel;
   state_ = NetState::Boot;
   stateSince_ = 0;
   nextActionAt_ = 0;  // first poll joins immediately
@@ -150,10 +151,18 @@ void NetSupervisor::poll(uint32_t nowMs) {
 
   // ---------------------------------------------------------------- inputs
   // Asynchronous scan bookkeeping (never a blocking scan: this may be the AP).
-  const ScanResult sr = plat_->scanPoll();
+  uint8_t foundChannel = 0;
+  const ScanResult sr = plat_->scanPoll(&foundChannel);
   if (sr == ScanResult::FoundPrimary) {
+    if (!primarySeen_) {
+      // Seen it again: try now rather than serving out a backoff that was
+      // sized for a network that was not there.
+      nextActionAt_ = now;
+      retryInterval_ = cfg_.retryMs;
+    }
     primarySeen_ = true;
     scanning_ = false;
+    if (foundChannel) channel_ = foundChannel;
   } else if (sr == ScanResult::NotFound) {
     primarySeen_ = false;
     scanning_ = false;
@@ -173,6 +182,13 @@ void NetSupervisor::poll(uint32_t nowMs) {
   const char *ssid = up ? plat_->staSsid() : nullptr;
   const bool onPrimaryNet = up && ssid != nullptr && cfg_.primarySsid != nullptr &&
                             strcmp(ssid, cfg_.primarySsid) == 0;
+
+  // Once seen, the primary's channel is remembered so the frequent look can be
+  // a single-channel scan. Learning it from the live link is free.
+  if (onPrimaryNet) {
+    const uint8_t ch = plat_->staChannel();
+    if (ch) channel_ = ch;
+  }
 
   const bool ok = onPrimaryNet && verified();
   if (ok) {
@@ -245,12 +261,17 @@ void NetSupervisor::poll(uint32_t nowMs) {
       }
       reason_ = up ? NetReason::ServerSilent : NetReason::LinkLost;
 
-      // Throttled look for the primary. Each scan costs AP airtime, so this
-      // is the only periodic transmission while in fallback.
+      // Look for the primary often, but cheaply. With the channel known a scan
+      // is a single-channel sweep - a tenth of the airtime, and short enough
+      // that attached clients do not drop - so recovery can be measured in
+      // seconds. A full-band sweep still happens occasionally as a backstop
+      // in case the plotter comes back on a different channel.
       if (!scanning_ && reached(now, nextScanAt_)) {
-        plat_->scanStart(cfg_.primarySsid);
+        const bool full = (channel_ == 0) || reached(now, nextFullScanAt_);
+        plat_->scanStart(cfg_.primarySsid, full ? 0 : channel_);
         scanning_ = true;
-        nextScanAt_ = now + cfg_.scanMs;
+        if (full) nextFullScanAt_ = now + cfg_.scanMs;
+        nextScanAt_ = now + (channel_ ? cfg_.scanFastMs : cfg_.scanMs);
       }
 
       // Prefer the primary; a client-only device may sit on the fallback

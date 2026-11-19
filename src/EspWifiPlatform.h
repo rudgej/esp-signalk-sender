@@ -31,8 +31,9 @@ class EspWifiPlatform : public NetPlatform {
   void apStop() override;
   uint8_t apClients() override;
 
-  void scanStart(const char *targetSsid) override;
-  ScanResult scanPoll() override;
+  void scanStart(const char *targetSsid, uint8_t channel) override;
+  ScanResult scanPoll(uint8_t *channelOut) override;
+  uint8_t staChannel() override;
 
  private:
   const char *scanTarget_ = nullptr;

@@ -85,13 +85,16 @@ void EspWifiPlatform::apStop() {
 
 uint8_t EspWifiPlatform::apClients() { return WiFi.softAPgetStationNum(); }
 
-void EspWifiPlatform::scanStart(const char *targetSsid) {
+void EspWifiPlatform::scanStart(const char *targetSsid, uint8_t channel) {
   scanTarget_ = targetSsid;
   // Asynchronous: a blocking scan stalls the AP and drops its clients.
-  WiFi.scanNetworks(/*async=*/true, /*show_hidden=*/false);
+  // Restricted to one channel when known - ~100 ms instead of ~2 s, which is
+  // what makes it affordable to look every few seconds.
+  WiFi.scanNetworks(/*async=*/true, /*show_hidden=*/false, /*passive=*/false,
+                    /*max_ms_per_chan=*/120, channel);
 }
 
-ScanResult EspWifiPlatform::scanPoll() {
+ScanResult EspWifiPlatform::scanPoll(uint8_t *channelOut) {
   const int16_t n = WiFi.scanComplete();
   if (n == WIFI_SCAN_RUNNING) return ScanResult::Running;
   if (n == WIFI_SCAN_FAILED) return ScanResult::Idle;  // never started
@@ -100,11 +103,17 @@ ScanResult EspWifiPlatform::scanPoll() {
   for (int16_t i = 0; i < n; ++i) {
     if (scanTarget_ && WiFi.SSID(i) == scanTarget_) {
       found = true;
+      if (channelOut) *channelOut = (uint8_t)WiFi.channel(i);
       break;
     }
   }
   WiFi.scanDelete();
   return found ? ScanResult::FoundPrimary : ScanResult::NotFound;
+}
+
+uint8_t EspWifiPlatform::staChannel() {
+  if (WiFi.status() != WL_CONNECTED) return 0;
+  return (uint8_t)WiFi.channel();
 }
 
 }  // namespace sks

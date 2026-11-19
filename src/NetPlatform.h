@@ -39,8 +39,17 @@ class NetPlatform {
 
   // Scanning. Must be asynchronous - a blocking scan in AP mode interrupts
   // the access point, which is exactly what a fallback hub must not do.
-  virtual void scanStart(const char *targetSsid) = 0;
-  virtual ScanResult scanPoll() = 0;
+  //
+  // channel 0 means every channel. A single-channel scan is a fraction of the
+  // cost of a full one, which is the difference between a hub that can afford
+  // to look often and one that cannot.
+  virtual void scanStart(const char *targetSsid, uint8_t channel) = 0;
+  // Returns FoundPrimary and writes the channel the match was seen on.
+  virtual ScanResult scanPoll(uint8_t *channelOut) = 0;
+
+  // Channel currently in use on the station side, 0 when not connected. Used
+  // to learn where the primary lives so later scans can be cheap.
+  virtual uint8_t staChannel() = 0;
 };
 
 }  // namespace sks

@@ -1,6 +1,6 @@
 {
   "name": "esp-signalk-sender",
-  "version": "0.2.4",
+  "version": "0.3.0",
   "description": "Shared helpers for ESP32 boat sensors: NMEA 0183 sentence assembly, JSON value scraping, a non-blocking round-trip probe, a UDP sender with a settable destination, and a non-blocking primary/fallback network supervisor.",
   "keywords": ["signalk", "nmea0183", "esp32", "udp", "sensor", "wifi", "failover"],
   "frameworks": "arduino",

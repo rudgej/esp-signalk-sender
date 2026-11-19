@@ -75,6 +75,9 @@ class NetSupervisor {
   uint8_t eventCount() const { return eventCount_; }
   uint8_t eventHead() const { return eventHead_; }  // next write index
 
+  // Diagnostics.
+  uint8_t channel() const { return channel_; }
+
  private:
   void enter(NetState next, uint32_t now);
   void noteTransition(uint32_t now);
@@ -109,7 +112,11 @@ class NetSupervisor {
 
   bool scanning_ = false;
   uint32_t nextScanAt_ = 0;
+  uint32_t nextFullScanAt_ = 0;
   bool primarySeen_ = false;
+  // Where the primary was last seen. Learned from the station link and from
+  // scans, so the frequent look can be a single-channel one.
+  uint8_t channel_ = 0;
 
   Event events_[kEventLog] = {};
   uint8_t eventCount_ = 0;

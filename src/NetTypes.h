@@ -60,7 +60,12 @@ struct NetConfig {
   // Scanning costs the access point airtime, and a hub scanning every 20 s
   // while its own clients are associated drops them repeatedly. Long is
   // better than frequent here: the plotter is off overnight, not for 20 s.
-  uint32_t scanMs = 60000;             // how often to look for the primary
+  uint32_t scanMs = 60000;             // full-band scan, also the backstop
+  // Once the primary's channel is known a scan costs about a tenth as much,
+  // so it becomes affordable to look often and recover in seconds rather
+  // than in a minute.
+  uint32_t scanFastMs = 5000;          // single-channel look
+  uint8_t primaryChannel = 0;          // hint; 0 = learn it from the link
   uint32_t holdAfterRecoveryMs = 180000;  // AP overlap window, see below
   uint32_t flapWindowMs = 1800000;     // 3 transitions in 30 min == a fault
   uint8_t flapLimit = 3;
