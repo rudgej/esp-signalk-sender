@@ -10,6 +10,13 @@ drifted into near-identical copies of the same four routines, and by
 [CYD-Display](https://github.com/rudgej/CYD-Display), which hosts the fallback
 network.
 
+> **Not used by the SeaKeeper relay.** The Wi-Fi/Ethernet bridge firmware for the
+> SeaKeeper lives in
+> [esp-seakeeper-relay](https://github.com/rudgej/esp-seakeeper-relay). That is a
+> standalone ESP-IDF application — it does not use this library, has no `lib_deps`
+> and is not published as a library itself.
+
+
 ## The problem it solves
 
 Both firmwares checked that their data was reaching Signal K by calling
