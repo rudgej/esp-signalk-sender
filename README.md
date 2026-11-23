@@ -216,6 +216,10 @@ they are rebuilt and reflashed.
   join; stale-primary clearing; blind probe disabled unless asked for
 - `v0.3.3` — `EspOta`: ArduinoOTA gated to the primary (N100) network, plus
   `tools/ota_push.sh` for deployment from the N100
+- `v0.3.4` — failover recovers to a returning primary when the fallback is
+  absent; scans and association attempts no longer overlap; a failed primary
+  join backs off to the fallback; the OTA listener closes on leaving the
+  primary network
 
 Bump the tag deliberately in each consumer when you want a change to flow, and
 note what changed here.

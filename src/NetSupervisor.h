@@ -143,6 +143,10 @@ class NetSupervisor {
   bool beginPending_ = false;
   uint16_t assocResets_ = 0;
   uint8_t scanFails_ = 0;
+  // Set when a primary join attempt timed out. While true, Fallback joins the
+  // fallback network first instead of retrying a primary that may be visible
+  // but unreachable (wrong password, vanished between scan and join).
+  bool primaryTryFailed_ = false;
 
   Event events_[kEventLog] = {};
   uint8_t eventCount_ = 0;

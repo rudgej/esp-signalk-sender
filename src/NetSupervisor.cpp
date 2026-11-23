@@ -115,6 +115,7 @@ void NetSupervisor::enter(NetState next, uint32_t now) {
         plat_->staReset();
         beginPending_ = false;
         scanning_ = false;
+        primaryTryFailed_ = true;  // we just abandoned a primary join
         if (assocResets_ < 0xFFFF) ++assocResets_;
       }
       nextScanAt_ = now;  // look for the primary straight away
@@ -224,6 +225,7 @@ void NetSupervisor::poll(uint32_t nowMs) {
     linkDownSince_ = 0;
     beginPending_ = false;
     scanFails_ = 0;
+    primaryTryFailed_ = false;
   }
   staUp_ = up;
   primaryIp_ = up ? plat_->staIp() : 0;
@@ -264,6 +266,15 @@ void NetSupervisor::poll(uint32_t nowMs) {
     }
     beginPending_ = false;
     scanning_ = false;  // the reset cancels any scan in flight
+    if (lastBeginSsid_ && cfg_.primarySsid &&
+        strcmp(lastBeginSsid_, cfg_.primarySsid) == 0) {
+      primaryTryFailed_ = true;
+    } else if (lastBeginSsid_ && cfg_.fallbackSsid &&
+               strcmp(lastBeginSsid_, cfg_.fallbackSsid) == 0) {
+      // The fallback is not working either; allow the primary to be tried
+      // again rather than alternating only in theory.
+      primaryTryFailed_ = false;
+    }
     if (assocResets_ < 0xFFFF) ++assocResets_;
     nextActionAt_ = now;
     nextFallbackAt_ = now;
@@ -278,7 +289,7 @@ void NetSupervisor::poll(uint32_t nowMs) {
         enter(NetState::PrimaryUp, now);
         break;
       }
-      if (!beginPending_ && reached(now, nextActionAt_)) {
+      if (!beginPending_ && !scanning_ && reached(now, nextActionAt_)) {
         beginTo(cfg_.primarySsid, cfg_.primaryPass, now);
         scheduleRetry(now);
       }
@@ -318,7 +329,7 @@ void NetSupervisor::poll(uint32_t nowMs) {
         break;
       }
       reason_ = NetReason::LinkLost;
-      if (!beginPending_ && reached(now, nextActionAt_)) {
+      if (!beginPending_ && !scanning_ && reached(now, nextActionAt_)) {
         beginTo(cfg_.primarySsid, cfg_.primaryPass, now);
         scheduleRetry(now);
       }
@@ -339,12 +350,18 @@ void NetSupervisor::poll(uint32_t nowMs) {
       // that attached clients do not drop - so recovery can be measured in
       // seconds. A full-band sweep still happens occasionally as a backstop
       // in case the plotter comes back on a different channel.
+      //
+      // A scan and an association attempt must not overlap: the driver aborts
+      // the join when the scan takes the radio. If a scan is due, it gets this
+      // poll; the association decision is made when the result is known.
+      bool startedScan = false;
       if (!scanning_ && !beginPending_ && reached(now, nextScanAt_)) {
         const bool full = (channel_ == 0) || reached(now, nextFullScanAt_);
         plat_->scanStart(cfg_.primarySsid, full ? 0 : channel_);
         scanning_ = true;
         scanStartedAt_ = now;
         ++scanStarts_;
+        startedScan = true;
         if (full) nextFullScanAt_ = now + cfg_.scanMs;
         nextScanAt_ = now + (channel_ ? cfg_.scanFastMs : cfg_.scanMs);
       }
@@ -357,22 +374,21 @@ void NetSupervisor::poll(uint32_t nowMs) {
       const bool onFallbackNet = here != nullptr && cfg_.fallbackSsid != nullptr &&
                                  strcmp(here, cfg_.fallbackSsid) == 0;
 
-      if (!up) {
-        if (!beginPending_) {
-          // Fallback means "get onto the fallback network". Trying the primary
-          // here is what left clients retrying an absent plotter for ever:
-          // primarySeen_ stayed latched and every attempt reset the watchdog
-          // before a scan could ever disprove it. Scans keep looking for the
-          // primary; if it is found, the switch below moves us back.
-          if (cfg_.fallbackSsid && cfg_.role == NetRole::ClientOnly) {
-            if (reached(now, nextFallbackAt_)) {
-              beginTo(cfg_.fallbackSsid, cfg_.fallbackPass, now);
-              nextFallbackAt_ = now + cfg_.fallbackRetryMs;
-            }
-          } else if (reached(now, nextActionAt_)) {
-            beginTo(cfg_.primarySsid, cfg_.primaryPass, now);
-            scheduleRetry(now);
+      if (!up && !beginPending_ && !scanning_ && !startedScan) {
+        // If a scan has just proved the primary is there, try it. A primary
+        // attempt that already timed out is different: retrying it immediately
+        // is what kept clients off the fallback when the SSID was visible but
+        // the join was not working. In that case the fallback is tried first.
+        if (primarySeen_ && !primaryTryFailed_) {
+          beginTo(cfg_.primarySsid, cfg_.primaryPass, now);
+        } else if (cfg_.fallbackSsid && cfg_.role == NetRole::ClientOnly) {
+          if (reached(now, nextFallbackAt_)) {
+            beginTo(cfg_.fallbackSsid, cfg_.fallbackPass, now);
+            nextFallbackAt_ = now + cfg_.fallbackRetryMs;
           }
+        } else if (reached(now, nextActionAt_)) {
+          beginTo(cfg_.primarySsid, cfg_.primaryPass, now);
+          scheduleRetry(now);
         }
       }
 
@@ -382,8 +398,8 @@ void NetSupervisor::poll(uint32_t nowMs) {
       const bool blindDue = cfg_.role == NetRole::ClientOnly &&
                             cfg_.blindProbeMs > 0 &&
                             reached(now, nextBlindAt_);
-      if (onFallbackNet && reached(now, nextSwitchAt_) &&
-          (primarySeen_ || blindDue)) {
+      if (!scanning_ && !startedScan && onFallbackNet &&
+          reached(now, nextSwitchAt_) && (primarySeen_ || blindDue)) {
         if (!primarySeen_) nextBlindAt_ = now + cfg_.blindProbeMs;
         nextSwitchAt_ = now + cfg_.switchMs;
         beginTo(cfg_.primarySsid, cfg_.primaryPass, now);

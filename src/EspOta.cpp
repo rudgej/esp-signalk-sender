@@ -7,6 +7,10 @@ void EspOta::begin(const char *hostname, const char *password) {
 
   if (hostname && hostname[0]) ArduinoOTA.setHostname(hostname);
   if (password && password[0]) ArduinoOTA.setPassword(password);
+  // The application owns mDNS for Signal K host resolution. ArduinoOTA would
+  // call MDNS.end() when the listener is closed on leaving the primary, which
+  // would take that service down with it. OTA is addressed by IP by the N100.
+  ArduinoOTA.setMdnsEnabled(false);
 
   ArduinoOTA.onStart([this]() {
     updating_ = true;
@@ -37,10 +41,17 @@ void EspOta::begin(const char *hostname, const char *password) {
 void EspOta::poll(bool allowed) {
   if (!started_) return;
 
-  // Not on the N100's network and not mid-update: stay silent. The UDP port
-  // is not even opened, so a device parked on the CYD's fallback AP cannot be
-  // reached by an uploader.
-  if (!allowed && !updating_) return;
+  // Leaving the primary network closes the listener. Staying bound on the
+  // fallback - and, on the CYD, while both networks are up - would leave an
+  // OTA path that the N100 is not supposed to have.
+  if (!allowed && !updating_) {
+    if (listening_) {
+      ArduinoOTA.end();
+      listening_ = false;
+      Serial.println("[OTA] closed");
+    }
+    return;
+  }
 
   if (!listening_) {
     ArduinoOTA.begin();

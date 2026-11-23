@@ -13,11 +13,15 @@ struct Mock : NetPlatform {
   bool okFallback = true;
   const char *ssid = nullptr;
   int beginPrimary = 0, beginFallback = 0, resets = 0, stops = 0, scanStarts = 0;
+  int overlaps = 0;
+  bool attemptActive = false;
   ScanResult nextScan = ScanResult::NotFound;
   bool scanPending = false;
   bool foundDelivered = false;
 
   void staBegin(const char *s, const char *) override {
+    if (scanPending) ++overlaps;
+    attemptActive = true;
     if (s && std::strcmp(s, "BoatNetwork") == 0) {
       ++beginPrimary;
       up = okPrimary;
@@ -29,9 +33,12 @@ struct Mock : NetPlatform {
     }
     ssid = up ? s : nullptr;
   }
-  void staStop() override { ++stops; up = false; ssid = nullptr; }
-  void staReset() override { ++resets; up = false; ssid = nullptr; }
-  bool staUp() override { return up; }
+  void staStop() override { ++stops; attemptActive = false; up = false; ssid = nullptr; }
+  void staReset() override { ++resets; attemptActive = false; up = false; ssid = nullptr; }
+  bool staUp() override {
+    if (up) attemptActive = false;
+    return up;
+  }
   uint32_t staIp() override { return up ? 0xC0A83201u : 0; }
   const char *staSsid() override { return up ? ssid : nullptr; }
   void apStart(const char *, const char *, uint8_t, uint8_t, uint32_t,
@@ -39,6 +46,7 @@ struct Mock : NetPlatform {
   void apStop() override {}
   uint8_t apClients() override { return 0; }
   void scanStart(const char *, uint8_t) override {
+    if (attemptActive) ++overlaps;
     scanPending = true;
     ++scanStarts;
   }
@@ -70,8 +78,11 @@ static NetConfig cfg() {
   return c;
 }
 
+static int g_failures = 0;
+
 static void result(const char *name, bool ok) {
   std::printf("%s: %s\n", name, ok ? "PASS" : "FAIL");
+  if (!ok) ++g_failures;
 }
 
 int main() {
@@ -88,6 +99,7 @@ int main() {
                 m.resets, s.stateName());
     result("fallback attempted", m.beginFallback > 0);
     result("stuck association reset", m.resets > 0);
+    result("no scan/join overlap", m.overlaps == 0);
   }
 
   // 2. Fallback joins successfully; with blindProbeMs=0 it must stay there.
@@ -106,6 +118,7 @@ int main() {
     result("joined fallback", m.beginFallback > 0);
     result("no blind probe away", m.beginPrimary == prim);
     result("no reset after good join", m.resets == resets0);
+    result("no scan/join overlap", m.overlaps == 0);
   }
 
   // 3. On the fallback, the primary is seen once and then scans fail forever.
@@ -147,5 +160,28 @@ int main() {
     result("hub disconnects without radio reset", m.stops > 0 && m.resets == 0);
   }
 
-  return 0;
+  // 5. Fallback is unavailable, then the primary comes back. The supervisor
+  //    must stop trying only the fallback and take the primary once a scan
+  //    proves it is there.
+  {
+    Mock m;
+    m.okPrimary = false;
+    m.okFallback = false;
+    NetSupervisor s;
+    s.begin(cfg(), &m);
+    for (uint32_t t = 0; t <= 90000; t += 250) s.poll(t);
+    const int before = m.beginPrimary;
+    m.okPrimary = true;
+    m.nextScan = ScanResult::FoundPrimary;
+    for (uint32_t t = 90250; t <= 400000; t += 250) s.poll(t);
+    std::printf("5: primaryBefore=%d primaryAfter=%d fallback=%d state=%s onPrimary=%d overlaps=%d\n",
+                before, m.beginPrimary, m.beginFallback, s.stateName(),
+                (int)s.onPrimary(), m.overlaps);
+    result("primary retried after it returned", m.beginPrimary > before);
+    result("recovered onto primary", s.onPrimary());
+    result("no scan/join overlap", m.overlaps == 0);
+  }
+
+  std::printf("%d failure(s)\n", g_failures);
+  return g_failures ? 1 : 0;
 }
