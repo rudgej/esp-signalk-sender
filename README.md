@@ -151,6 +151,38 @@ if (probe.take(r)) {
 Call `probe.setUrl()` when the server address changes — for example after
 re-resolving a hostname that may have moved.
 
+## OTA from the N100
+
+`EspOta` is a thin ArduinoOTA wrapper for a closed loop: sensors are only
+updatable from the network the N100 hosts. The gate is the network, not an IP
+or a MAC, so replacing the N100 hardware does not break it.
+
+```cpp
+static sks::EspOta ota;
+
+// setup(), after the network is configured:
+ota.begin("waterlevel", "bossy-ota");
+
+// loop():
+const bool onN100 = staConnected && WiFi.SSID() == cfgSsid;
+ota.poll(onN100);
+```
+
+`poll(false)` does not even open the UDP port, so a sensor parked on the CYD's
+fallback access point cannot be reached by an uploader. The password is a fleet
+token, not a security boundary — anyone who can join the boat LAN and knows it
+can flash.
+
+Each firmware needs a dual-slot partition table (`min_spiffs.csv` on 4 MB,
+`app3M_fat9M_16MB.csv` on 16 MB). That is a one-time USB flash; NVS sits at
+`0x9000` in both layouts, so calibration and assignments survive.
+
+From the N100, with `espota.py` copied from the ESP32 Arduino core once:
+
+```sh
+tools/ota_push.sh firmware.bin bossy-ota 192.168.10.191 192.168.10.192
+```
+
 ## Consuming it from a project
 
 Pin a tag, so a change here cannot silently alter a build:
@@ -182,6 +214,8 @@ they are rebuilt and reflashed.
 - `v0.3.1` — bounded scan wait; never reconnect to the network already in use
 - `v0.3.2` — bounded association (`assocTimeoutMs` + `staReset()`); fallback-first
   join; stale-primary clearing; blind probe disabled unless asked for
+- `v0.3.3` — `EspOta`: ArduinoOTA gated to the primary (N100) network, plus
+  `tools/ota_push.sh` for deployment from the N100
 
 Bump the tag deliberately in each consumer when you want a change to flow, and
 note what changed here.
