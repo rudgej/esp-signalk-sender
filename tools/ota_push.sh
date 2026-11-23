@@ -1,7 +1,7 @@
 #!/bin/sh
 # Push one built firmware.bin to ESP32 sensors from the N100.
 #
-#   ./ota_push.sh firmware.bin <token> 192.168.10.191 192.168.10.192
+#   ./ota_push.sh firmware.bin <token> 192.168.10.191 192.168.10.171 192.168.10.172
 #
 # The N100 is the uploader, and each sensor only serves OTA while it is
 # associated to the primary network the N100 hosts. Nothing here is tied to

@@ -179,18 +179,67 @@ Use a dual-slot partition table. The stock `default.csv` (4 MB) and
 Installing the OTA-capable build is a one-time USB flash; NVS sits at `0x9000`
 in these layouts, so calibration, probe roles and display settings survive.
 
-From the N100, with `espota.py` copied from the ESP32 Arduino core once:
+### The deploy loop, step by step
+
+**Once**, install the uploader on the N100. It is the only machine that may
+flash a sensor: the gate is the network the N100 hosts, so an uploader anywhere
+else cannot reach a listening sensor even if it knows the token.
 
 ```sh
-tools/ota_push.sh firmware.bin bossy-ota 192.168.10.191 192.168.10.192
+ssh pi@bossy.local 'mkdir -p ~/ota'
+scp ~/.platformio/packages/framework-arduinoespressif32/tools/espota.py \
+    pi@bossy.local:~/ota/
+scp tools/ota_push.sh pi@bossy.local:~/ota/
 ```
+
+**Every deploy**, from the build machine:
+
+```sh
+pio run -e <env>                        # image: .pio/build/<env>/firmware.bin
+scp .pio/build/<env>/firmware.bin pi@bossy.local:~/ota/
+ssh pi@bossy.local '~/ota/ota_push.sh ~/ota/firmware.bin bossy-ota <address>'
+```
+
+One command can carry several addresses; each is tried in turn and the script
+exits non-zero if any of them failed, so a partial deploy is never silent.
+
+A healthy push is short and uneventful: `Sending invitation`, then
+`Authenticating...OK`, then a row of dots, then the device reboots. The usual
+failures and what they mean:
+
+| Output | Meaning |
+|---|---|
+| `Authenticating...FAIL` | token does not match `OTA_PASSWORD` in that firmware |
+| `No response from the ESP` | device is on the fallback network, off, or not listening — check `/status` first |
+| `Error Uploading` part-way | link dropped; re-run, the slot is only switched on a complete image |
+
+Addresses as deployed on `BoatNetwork`:
+
+| Device | mDNS | Address | Version readback |
+|---|---|---|---|
+| Water level | `waterlevel.local` | `192.168.10.191` | `fw` in `/status` |
+| Wind | `windsend.local` | `192.168.10.171` | `fw` in `/status` (from its next flash) |
+| Generator temperature | `gentemp.local` | `192.168.10.172` | `fw` in `/status` |
+| CYD display | no mDNS | `192.168.10.154` | boot banner on serial; no `/status` page |
+
+**Confirm the image is running**, rather than trusting the uploader's final
+message. Each sender reports its build as `fw`, and a fresh boot restarts its
+delta counter:
+
+```sh
+curl -s http://192.168.10.191/status | tr ',' '\n' | grep -E 'fw|sending'
+```
+
+That readback is the reason `FW_VERSION` exists: a push that reports success but
+leaves the old version running is a different fault from one that never
+connected, and only the device can tell them apart.
 
 ## Consuming it from a project
 
 Pin a tag, so a change here cannot silently alter a build:
 
 ```ini
-lib_deps = https://github.com/rudgej/esp-signalk-sender.git#v0.1.0
+lib_deps = https://github.com/rudgej/esp-signalk-sender.git#v0.3.4
 ```
 
 For local development against a working copy, point at the directory instead:
