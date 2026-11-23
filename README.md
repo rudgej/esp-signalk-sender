@@ -173,9 +173,11 @@ fallback access point cannot be reached by an uploader. The password is a fleet
 token, not a security boundary — anyone who can join the boat LAN and knows it
 can flash.
 
-Each firmware needs a dual-slot partition table (`min_spiffs.csv` on 4 MB,
-`app3M_fat9M_16MB.csv` on 16 MB). That is a one-time USB flash; NVS sits at
-`0x9000` in both layouts, so calibration and assignments survive.
+Use a dual-slot partition table. The stock `default.csv` (4 MB) and
+`default_16MB.csv` (16 MB) already have two app slots; the CYD needs
+`min_spiffs.csv` because its app does not fit `huge_app.csv` plus a second slot.
+Installing the OTA-capable build is a one-time USB flash; NVS sits at `0x9000`
+in these layouts, so calibration, probe roles and display settings survive.
 
 From the N100, with `espota.py` copied from the ESP32 Arduino core once:
 
