@@ -17,10 +17,19 @@ void EspWifiPlatform::begin() {
 
 void EspWifiPlatform::staBegin(const char *ssid, const char *pass) {
   if (!ssid || !ssid[0]) return;
+  // staReset() leaves the interface off; bring the station back first.
+  if (WiFi.getMode() == WIFI_OFF) WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, pass);
 }
 
 void EspWifiPlatform::staStop() { WiFi.disconnect(false, true); }
+
+void EspWifiPlatform::staReset() {
+  // Client-only recovery. Never call this on a hub: WIFI_OFF would take the
+  // access point down with the station.
+  WiFi.disconnect(true, true);
+  WiFi.mode(WIFI_OFF);
+}
 
 bool EspWifiPlatform::staUp() { return WiFi.status() == WL_CONNECTED; }
 

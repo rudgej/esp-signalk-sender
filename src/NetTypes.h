@@ -66,6 +66,14 @@ struct NetConfig {
   // than in a minute.
   uint32_t scanFastMs = 5000;          // single-channel look
   uint8_t primaryChannel = 0;          // hint; 0 = learn it from the link
+  // Client-only recovery. A stuck association must not survive: if the station
+  // is not up within assocTimeoutMs of staBegin(), the radio is reset and the
+  // attempt is retried. While an attempt is in flight no second begin and no
+  // scan is issued, so the attempt has a chance to complete.
+  uint32_t assocTimeoutMs = 20000;
+  uint32_t fallbackRetryMs = 5000;
+  // 0 = never leave a working fallback without having seen the primary.
+  uint32_t blindProbeMs = 0;
   // Leaving the hub's network for the primary is a disruptive act, so it is
   // rate limited. Blind probe: even if scanning is broken, a client must not
   // live on the fallback network for ever.

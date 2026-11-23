@@ -22,6 +22,7 @@ class EspWifiPlatform : public NetPlatform {
 
   void staBegin(const char *ssid, const char *pass) override;
   void staStop() override;
+  void staReset() override;
   bool staUp() override;
   uint32_t staIp() override;
   const char *staSsid() override;

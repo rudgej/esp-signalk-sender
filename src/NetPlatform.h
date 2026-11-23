@@ -23,6 +23,10 @@ class NetPlatform {
   // Station side.
   virtual void staBegin(const char *ssid, const char *pass) = 0;
   virtual void staStop() = 0;
+  // Deeper station recovery: drop the station and power its interface down so
+  // the next staBegin() starts from a clean driver state. The default is the
+  // ordinary stop, which is enough for platforms that cannot do better.
+  virtual void staReset() { staStop(); }
   virtual bool staUp() = 0;        // associated AND holding an IP
   virtual uint32_t staIp() = 0;    // host byte order, 0 when down
   virtual const char *staSsid() = 0;

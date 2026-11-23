@@ -85,6 +85,11 @@ class NetSupervisor {
   // primary for ever.
   uint16_t scanAborts() const { return scanAborts_; }
 
+  // Client-only recovery diagnostics.
+  uint16_t assocResets() const { return assocResets_; }
+  bool primarySeen() const { return primarySeen_; }
+  const char *lastBeginSsid() const { return lastBeginSsid_; }
+
  private:
   void enter(NetState next, uint32_t now);
   void noteTransition(uint32_t now);
@@ -92,6 +97,7 @@ class NetSupervisor {
   void scheduleRetry(uint32_t now);
   void raiseAp();
   void lowerAp();
+  bool beginTo(const char *ssid, const char *pass, uint32_t now);
 
   NetConfig cfg_;
   NetPlatform *plat_ = nullptr;
@@ -130,6 +136,13 @@ class NetSupervisor {
   // Where the primary was last seen. Learned from the station link and from
   // scans, so the frequent look can be a single-channel one.
   uint8_t channel_ = 0;
+  uint32_t lastBeginMs_ = 0;
+  uint32_t lastScanOkMs_ = 0;
+  uint32_t nextFallbackAt_ = 0;
+  const char *lastBeginSsid_ = nullptr;
+  bool beginPending_ = false;
+  uint16_t assocResets_ = 0;
+  uint8_t scanFails_ = 0;
 
   Event events_[kEventLog] = {};
   uint8_t eventCount_ = 0;

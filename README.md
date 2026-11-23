@@ -95,6 +95,25 @@ now a regression test:
    for the primary and sits on the fallback network indefinitely. `scanStarts`,
    `scanResults` and `scanAborts` exist so that state is visible rather than
    inferred.
+4. **An association attempt can hang for ever.** If the access point vanishes
+   mid-join, `WiFi.begin()` can stay in "connecting" with no timeout, and only a
+   power cycle clears it. `assocTimeoutMs` (20 s) plus `staReset()` bounds that.
+   Fallback now always means *join the fallback*: retrying a primary that is
+   merely remembered, while the watchdog keeps cancelling the scan that would
+   disprove it, is how a sensor ends up stuck with no network at all.
+
+### Host regression test
+
+The state machine has no Arduino dependency, so the failover paths can be driven
+with a mock platform on a workstation:
+
+```sh
+clang++ -std=c++17 -I src test/host/test_net.cpp src/NetSupervisor.cpp -o /tmp/test_net
+/tmp/test_net
+```
+
+It covers a stuck association, a good fallback join with no blind probe away,
+and a primary that was seen once and then disappears for ever.
 
 ## What is deliberately *not* in it
 
@@ -161,6 +180,8 @@ they are rebuilt and reflashed.
 - `v0.2.4` — a hub never joins its own AP; scans default to once a minute
 - `v0.3.0` — channel-aware scanning: seconds to recover, not a minute
 - `v0.3.1` — bounded scan wait; never reconnect to the network already in use
+- `v0.3.2` — bounded association (`assocTimeoutMs` + `staReset()`); fallback-first
+  join; stale-primary clearing; blind probe disabled unless asked for
 
 Bump the tag deliberately in each consumer when you want a change to flow, and
 note what changed here.
